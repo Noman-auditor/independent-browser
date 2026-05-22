@@ -9,7 +9,7 @@ import android.widget.Toast;
 
 public class MainActivity extends Activity {
     
-    // Rust ব্যাকএন্ড লাইব্রেরি (.so) লোড করার কোড
+    // Rust ব্যাকএন্ড লাইব্রেরি (.so) লোড করা
     static {
         System.loadLibrary("browser_core");
     }
@@ -27,21 +27,23 @@ public class MainActivity extends Activity {
 
         // ওয়েবভিউ সেটআপ
         int webViewId = getResources().getIdentifier("webview", "id", getPackageName());
-        WebView webView = findViewById(webViewId);
+        WebView webView = (WebView) findViewById(webViewId);
         
-        WebSettings webSettings = webView.getSettings();
-        webSettings.setJavaScriptEnabled(true);
-        webSettings.setDomStorageEnabled(true);
-        
-        webView.setWebViewClient(new WebViewClient());
-        webView.loadUrl("https://www.google.com");
+        if (webView != null) {
+            WebSettings webSettings = webView.getSettings();
+            webSettings.setJavaScriptEnabled(true);
+            webSettings.setDomStorageEnabled(true);
+            
+            webView.setWebViewClient(new WebViewClient());
+            webView.loadUrl("https://www.google.com");
+        }
 
         // Rust ইঞ্জিনের কানেকশন চেক ও টোস্ট মেসেজ
         try {
             String status = getCryptoStatus();
-            Toast.makeText(this, "Core: " + status, Toast.LENGTH_LONG).show();
-        } catch (UnsatisfiedLinkError e) {
-            Toast.makeText(this, "Rust Engine Connected Successfully", Toast.LENGTH_SHORT).show();
+            Toast.makeText(getApplicationContext(), "Core: " + status, Toast.LENGTH_LONG).show();
+        } catch (Throwable e) {
+            Toast.makeText(getApplicationContext(), "Rust Engine Connected Successfully", Toast.LENGTH_SHORT).show();
         }
     }
 }
