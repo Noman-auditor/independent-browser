@@ -1,0 +1,66 @@
+name: Android Hybrid Rust-Java APK Build
+
+on:
+  push:
+    branches: [ "main" ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout Code
+      uses: actions/checkout@v4
+
+    - name: Set up JDK 17
+      uses: actions/setup-java@v4
+      with:
+        java-version: '17'
+        distribution: 'temurin'
+
+    - name: Set up Android SDK
+      uses: android-actions/setup-android@v3
+
+    - name: Set up Rust toolchain
+      uses: dtolnay/rust-toolchain@stable
+      with:
+        toolchain: stable
+        targets: aarch64-linux-android
+
+    - name: Build Rust Core Library
+      run: |
+        cargo build --release --target aarch64-linux-android
+
+    - name: Compile Java Code
+      run: |
+        mkdir -p independent_browser/bin
+        javac -d independent_browser/bin -cp $ANDROID_HOME/platforms/android-29/android.jar independent_browser/app/src/main/java/com/custom/browser/MainActivity.java
+
+    - name: Convert Java Classes to DEX
+      run: |
+        $ANDROID_HOME/build-tools/29.0.3/dx --dex --output=independent_browser/bin/classes.dex independent_browser/bin/com/custom/browser/MainActivity.class
+
+    - name: Package Base APK with AAPT
+      run: |
+        $ANDROID_HOME/build-tools/29.0.3/aapt package -f -M independent_browser/app/src/main/AndroidManifest.xml -S independent_browser/app/src/main/res -I $ANDROID_HOME/platforms/android-29/android.jar -F independent_browser/bin/unaligned.apk
+
+    - name: Inject DEX and Rust .so to APK
+      run: |
+        cd independent_browser/bin
+        zip -u unaligned.apk classes.dex
+        mkdir -p lib/arm64-v8a
+        cp ../../target/aarch64-linux-android/release/libbrowser_core.so lib/arm64-v8a/
+        zip -ur unaligned.apk lib/
+
+    - name: Sign APK
+      run: |
+        cd independent_browser/bin
+        keytool -genkey -v -keystore debug.keystore -storepass android -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=Android,C=US"
+        $ANDROID_HOME/build-tools/29.0.3/apksigner sign --ks debug.keystore --ks-pass pass:android --out secure_browser_release.apk unaligned.apk
+
+    - name: Upload Production APK
+      uses: actions/upload-artifact@v4
+      with:
+        name: Secure-Browser-APK
+        path: independent_browser/bin/secure_browser_release.apk
