@@ -2,7 +2,7 @@ package com.custom.browser;
 
 import android.app.Activity;
 import android.os.Bundle;
-importimport android.webkit.WebSettings;
+import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
 import android.widget.Toast;
