@@ -19,8 +19,14 @@ jobs:
         java-version: '17'
         distribution: 'temurin'
 
-    - name: Set up Android SDK
+    - name: Set up Android SDK & NDK
       uses: android-actions/setup-android@v3
+
+    # NDK ও প্রপার টুলচেন সেটআপ (Clang এরর ফিক্স করার জন্য)
+    - name: Install Android NDK
+      run: |
+        echo "y" | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --install "ndk;25.2.9519653"
+        echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/25.2.9519653" >> $GITHUB_ENV
 
     - name: Set up Rust toolchain
       uses: dtolnay/rust-toolchain@stable
@@ -28,7 +34,12 @@ jobs:
         toolchain: stable
         targets: aarch64-linux-android
 
+    # OpenSSL ও Rust Cross-Compilation এনভায়রনমেন্ট সেটআপ
     - name: Build Rust Core Library
+      env:
+        CC: ${{ env.ANDROID_NDK_HOME }}/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android29-clang
+        AR: ${{ env.ANDROID_NDK_HOME }}/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-ar
+        CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER: ${{ env.ANDROID_NDK_HOME }}/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android29-clang
       run: |
         cargo build --release --target aarch64-linux-android
 
@@ -50,7 +61,7 @@ jobs:
         cd independent_browser/bin
         zip -u unaligned.apk classes.dex
         mkdir -p lib/arm64-v8a
-        cp ../../target/aarch64-linux-android/release/libbrowser_core.so lib/arm64-v8a/
+        cp ../../target/aarch64-linux-android/release/libbrowser_core.so lib/arm64-v8a/ || cp ../target/aarch64-linux-android/release/libbrowser_core.so lib/arm64-v8a/
         zip -ur unaligned.apk lib/
 
     - name: Sign APK
