@@ -1,4 +1,4 @@
-name: Android Hybrid Rust-Java APK Build
+name: Check Folder Structure
 
 on:
   push:
@@ -6,72 +6,17 @@ on:
   workflow_dispatch:
 
 jobs:
-  build:
+  check-files:
     runs-on: ubuntu-latest
 
     steps:
     - name: Checkout Code
       uses: actions/checkout@v4
 
-    - name: Set up JDK 17
-      uses: actions/setup-java@v4
-      with:
-        java-version: '17'
-        distribution: 'temurin'
-
-    - name: Set up Android SDK & NDK
-      uses: android-actions/setup-android@v3
-
-    - name: Install Android NDK
+    # এই ধাপটি ক্লাউডের সব ফাইলের লিস্ট বের করবে
+    - name: List All Files and Folders
       run: |
-        echo "y" | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --install "ndk;25.2.9519653"
-        echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/25.2.9519653" >> $GITHUB_ENV
-
-    - name: Set up Rust toolchain
-      uses: dtolnay/rust-toolchain@stable
-      with:
-        toolchain: stable
-        targets: aarch64-linux-android
-
-    - name: Build Rust Core Library
-      env:
-        CC: ${{ env.ANDROID_NDK_HOME }}/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android29-clang
-        AR: ${{ env.ANDROID_NDK_HOME }}/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-ar
-        RANLIB: ${{ env.ANDROID_NDK_HOME }}/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-ranlib
-        CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER: ${{ env.ANDROID_NDK_HOME }}/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android29-clang
-      run: |
-        cargo build --release --target aarch64-linux-android
-
-    # এখানে independent_browser থেকে পরিবর্তন করে independent-browser করা হয়েছে
-    - name: Compile Java Code
-      run: |
-        mkdir -p independent-browser/bin
-        javac -d independent-browser/bin -cp $ANDROID_HOME/platforms/android-29/android.jar independent-browser/app/src/main/java/com/custom/browser/MainActivity.java
-
-    - name: Convert Java Classes to DEX
-      run: |
-        $ANDROID_HOME/build-tools/29.0.3/dx --dex --output=independent-browser/bin/classes.dex independent-browser/bin/com/custom/browser/MainActivity.class
-
-    - name: Package Base APK with AAPT
-      run: |
-        $ANDROID_HOME/build-tools/29.0.3/aapt package -f -M independent-browser/app/src/main/AndroidManifest.xml -S independent-browser/app/src/main/res -I $ANDROID_HOME/platforms/android-29/android.jar -F independent-browser/bin/unaligned.apk
-
-    - name: Inject DEX and Rust .so to APK
-      run: |
-        cd independent-browser/bin
-        zip -u unaligned.apk classes.dex
-        mkdir -p lib/arm64-v8a
-        cp ../../target/aarch64-linux-android/release/libbrowser_core.so lib/arm64-v8a/ || cp ../target/aarch64-linux-android/release/libbrowser_core.so lib/arm64-v8a/
-        zip -ur unaligned.apk lib/
-
-    - name: Sign APK
-      run: |
-        cd independent-browser/bin
-        keytool -genkey -v -keystore debug.keystore -storepass android -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=Android,C=US"
-        $ANDROID_HOME/build-tools/29.0.3/apksigner sign --ks debug.keystore --ks-pass pass:android --out secure_browser_release.apk unaligned.apk
-
-    - name: Upload Production APK
-      uses: actions/upload-artifact@v4
-      with:
-        name: Secure-Browser-APK
-        path: independent-browser/bin/secure_browser_release.apk
+        echo "=== Root Directory Content ==="
+        ls -la
+        echo "=== Searching for MainActivity.java ==="
+        find . -name "MainActivity.java"
