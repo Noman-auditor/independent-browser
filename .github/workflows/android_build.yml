@@ -1,4 +1,4 @@
-name: Check Folder Structure
+name: Android Hybrid Rust-Java APK Build
 
 on:
   push:
@@ -6,17 +6,79 @@ on:
   workflow_dispatch:
 
 jobs:
-  check-files:
+  build:
     runs-on: ubuntu-latest
 
     steps:
     - name: Checkout Code
       uses: actions/checkout@v4
 
-    # এই ধাপটি ক্লাউডের সব ফাইলের লিস্ট বের করবে
-    - name: List All Files and Folders
+    - name: Set up JDK 17
+      uses: actions/setup-java@v4
+      with:
+        java-version: '17'
+        distribution: 'temurin'
+
+    - name: Set up Android SDK & NDK
+      uses: android-actions/setup-android@v3
+
+    - name: Install Android NDK
       run: |
-        echo "=== Root Directory Content ==="
-        ls -la
-        echo "=== Searching for MainActivity.java ==="
-        find . -name "MainActivity.java"
+        echo "y" | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --install "ndk;25.2.9519653"
+        echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/25.2.9519653" >> $GITHUB_ENV
+
+    - name: Set up Rust toolchain
+      uses: dtolnay/rust-toolchain@stable
+      with:
+        toolchain: stable
+        targets: aarch64-linux-android
+
+    - name: Build Rust Core Library
+      env:
+        CC: ${{ env.ANDROID_NDK_HOME }}/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android29-clang
+        AR: ${{ env.ANDROID_NDK_HOME }}/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-ar
+        RANLIB: ${{ env.ANDROID_NDK_HOME }}/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-ranlib
+        CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER: ${{ env.ANDROID_NDK_HOME }}/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android29-clang
+      run: |
+        cargo build --release --target aarch64-linux-android
+
+    # এখানে ফোল্ডার স্ট্রাকচার এবং জাভা ফাইলের অটো-সার্চ ফিক্স করা হয়েছে
+    - name: Compile Java Code
+      run: |
+        mkdir -p independent_browser/bin
+        JAVA_FILE=$(find . -name "MainActivity.java" | head -n 1)
+        if [ -z "$JAVA_FILE" ]; then
+          echo "Error: MainActivity.java not found in repository!" && exit 1
+        fi
+        javac -d independent_browser/bin -cp $ANDROID_HOME/platforms/android-29/android.jar $JAVA_FILE
+
+    - name: Convert Java Classes to DEX
+      run: |
+        CLASS_FILE=$(find independent_browser/bin -name "MainActivity.class" | head -n 1)
+        $ANDROID_HOME/build-tools/29.0.3/dx --dex --output=independent_browser/bin/classes.dex $CLASS_FILE
+
+    - name: Package Base APK with AAPT
+      run: |
+        MANIFEST_FILE=$(find . -name "AndroidManifest.xml" | head -n 1)
+        RES_DIR=$(find . -type d -name "res" | head -n 1)
+        $ANDROID_HOME/build-tools/29.0.3/aapt package -f -M $MANIFEST_FILE -S $RES_DIR -I $ANDROID_HOME/platforms/android-29/android.jar -F independent_browser/bin/unaligned.apk
+
+    - name: Inject DEX and Rust .so to APK
+      run: |
+        cd independent_browser/bin
+        zip -u unaligned.apk classes.dex
+        mkdir -p lib/arm64-v8a
+        cp ../../target/aarch64-linux-android/release/libbrowser_core.so lib/arm64-v8a/ || cp ../target/aarch64-linux-android/release/libbrowser_core.so lib/arm64-v8a/
+        zip -ur unaligned.apk lib/
+
+    - name: Sign APK
+      run: |
+        cd independent_browser/bin
+        keytool -genkey -v -keystore debug.keystore -storepass android -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=Android,C=US"
+        $ANDROID_HOME/build-tools/29.0.3/apksigner sign --ks debug.keystore --ks-pass pass:android --out secure_browser_release.apk unaligned.apk
+
+    - name: Upload Production APK
+      uses: actions/upload-artifact@v4
+      with:
+        name: Secure-Browser-APK
+        path: independent_browser/bin/secure_browser_release.apk
