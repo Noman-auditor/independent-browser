@@ -22,7 +22,6 @@ jobs:
     - name: Set up Android SDK & NDK
       uses: android-actions/setup-android@v3
 
-    # NDK ও প্রপার টুলচেন সেটআপ (Clang এরর ফিক্স করার জন্য)
     - name: Install Android NDK
       run: |
         echo "y" | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --install "ndk;25.2.9519653"
@@ -34,11 +33,12 @@ jobs:
         toolchain: stable
         targets: aarch64-linux-android
 
-    # OpenSSL ও Rust Cross-Compilation এনভায়রনমেন্ট সেটআপ
+    # এখানে RANLIB এবং অন্যান্য সব প্রয়োজনীয় কম্পাইলার টুলস সেট করা হয়েছে
     - name: Build Rust Core Library
       env:
         CC: ${{ env.ANDROID_NDK_HOME }}/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android29-clang
         AR: ${{ env.ANDROID_NDK_HOME }}/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-ar
+        RANLIB: ${{ env.ANDROID_NDK_HOME }}/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-ranlib
         CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER: ${{ env.ANDROID_NDK_HOME }}/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android29-clang
       run: |
         cargo build --release --target aarch64-linux-android
